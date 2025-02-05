@@ -131,6 +131,7 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Action *act) override;
     bool preorder(const P4::IR::Type_Method *m) override;
     bool preorder(const P4::IR::Type_Void *v) override;
+    bool preorder(const P4::IR::Type_Struct *v) override;
 
     mlir::Type getType() const { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
@@ -454,6 +455,20 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Void *type) {
 
     ConversionTracer trace("TypeConverting ", type);
     auto mlirType = P4HIR::VoidType::get(converter.context());
+    return setType(type, mlirType);
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_Struct *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<P4HIR::StructType::FieldInfo, 4> fields;
+    for (const auto *field : type->fields) {
+        fields.push_back({mlir::StringAttr::get(converter.context(), field->name.string_view()),
+                          convert(field->type)});
+    }
+
+    auto mlirType = P4HIR::StructType::get(converter.context(), type->name.string_view(), fields);
     return setType(type, mlirType);
 }
 
