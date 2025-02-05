@@ -146,28 +146,38 @@ bool operator==(const FieldInfo &a, const FieldInfo &b) {
 llvm::hash_code hash_value(const FieldInfo &fi) { return llvm::hash_combine(fi.name, fi.type); }
 }  // namespace P4::P4MLIR::P4HIR::detail
 
-/// Parse a list of unique field names and types within <>. E.g.:
-/// <foo: i7, bar: i8>
-static ParseResult parseFields(AsmParser &p, SmallVectorImpl<FieldInfo> &parameters) {
+/// Parse a list of unique field names and types within <> plus name. E.g.:
+/// <name, foo: i7, bar: i8>
+static ParseResult parseFields(AsmParser &p, std::string &name,
+                               SmallVectorImpl<FieldInfo> &parameters) {
     llvm::StringSet<> nameSet;
     bool hasDuplicateName = false;
+    bool parsedName = false;
     auto parseResult =
         p.parseCommaSeparatedList(mlir::AsmParser::Delimiter::LessGreater, [&]() -> ParseResult {
-            std::string name;
-            Type type;
+            // First, try to parse name
+            if (!parsedName) {
+                if (p.parseKeywordOrString(&name)) return failure();
+                parsedName = true;
+                return success();
+            }
+
+            // Parse fields
+            std::string fieldName;
+            Type fieldType;
 
             auto fieldLoc = p.getCurrentLocation();
-            if (p.parseKeywordOrString(&name) || p.parseColon() || p.parseType(type))
+            if (p.parseKeywordOrString(&fieldName) || p.parseColon() || p.parseType(fieldType))
                 return failure();
 
-            if (!nameSet.insert(name).second) {
+            if (!nameSet.insert(fieldName).second) {
                 p.emitError(fieldLoc, "duplicate field name \'" + name + "\'");
                 // Continue parsing to print all duplicates, but make sure to error
                 // eventually
                 hasDuplicateName = true;
             }
 
-            parameters.push_back(FieldInfo{StringAttr::get(p.getContext(), name), type});
+            parameters.push_back(FieldInfo{StringAttr::get(p.getContext(), fieldName), fieldType});
             return success();
         });
 
@@ -176,8 +186,10 @@ static ParseResult parseFields(AsmParser &p, SmallVectorImpl<FieldInfo> &paramet
 }
 
 /// Print out a list of named fields surrounded by <>.
-static void printFields(AsmPrinter &p, ArrayRef<FieldInfo> fields) {
+static void printFields(AsmPrinter &p, StringRef name, ArrayRef<FieldInfo> fields) {
     p << '<';
+    p.printString(name);
+    if (!fields.empty()) p << ", ";
     llvm::interleaveComma(fields, p, [&](const FieldInfo &field) {
         p.printKeywordOrString(field.name.getValue());
         p << ": " << field.type;
@@ -187,11 +199,12 @@ static void printFields(AsmPrinter &p, ArrayRef<FieldInfo> fields) {
 
 Type StructType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;
-    if (parseFields(p, parameters)) return {};
-    return get(p.getContext(), parameters);
+    std::string name;
+    if (parseFields(p, name, parameters)) return {};
+    return get(p.getContext(), name, parameters);
 }
 
-LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError,
+LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
                                  ArrayRef<StructType::FieldInfo> elements) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
     LogicalResult result = success();
@@ -205,7 +218,7 @@ LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError,
     return result;
 }
 
-void StructType::print(AsmPrinter &p) const { printFields(p, getElements()); }
+void StructType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
 
 Type StructType::getFieldType(mlir::StringRef fieldName) {
     for (const auto &field : getElements())
@@ -296,6 +309,10 @@ std::pair<unsigned, bool> StructType::projectToChildFieldID(unsigned fieldID,
     auto childRoot = fieldIDs[index];
     auto rangeEnd = index + 1 >= getElements().size() ? maxId : (fieldIDs[index + 1] - 1);
     return std::make_pair(fieldID - childRoot, fieldID >= childRoot && fieldID <= rangeEnd);
+}
+
+void StructType::getInnerTypes(SmallVectorImpl<Type> &types) {
+    for (const auto &field : getElements()) types.push_back(field.type);
 }
 
 void P4HIRDialect::registerTypes() {
