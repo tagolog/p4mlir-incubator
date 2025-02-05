@@ -3,8 +3,10 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/Interfaces/MemorySlotInterfaces.td"
 
 include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.td"
+include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // P4HIR type definitions.
@@ -122,6 +124,7 @@ def VoidType : P4HIR_Type<"Void", "void"> {
     llvm::StringRef getAlias() const { return "void"; };
   }];
 }
+
 //===----------------------------------------------------------------------===//
 // ReferenceType
 //===----------------------------------------------------------------------===//
@@ -151,6 +154,10 @@ def ReferenceType : P4HIR_Type<"Reference", "ref"> {
 
   let skipDefaultBuilders = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// FuncType
+//===----------------------------------------------------------------------===//
 
 def FuncType : P4HIR_Type<"Func", "func"> {
   let summary = "P4 function-like type (actions, methods, functions)";
@@ -209,6 +216,38 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 
     /// Returns whether the function returns void.
     bool isVoid() const;
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// StructType
+//===----------------------------------------------------------------------===//
+
+// A packed struct. Declares the p4hir::StructType in C++.
+def StructType : P4HIR_Type<"Struct", "struct", [
+  DeclareTypeInterfaceMethods<DestructurableTypeInterface>,
+  DeclareTypeInterfaceMethods<FieldIDTypeInterface>
+]> {
+  let summary = "struct type";
+  let description = [{
+    Represents a structure of name, value pairs.
+    !p4hior.struct<fieldName1: Type1, fieldName2: Type2>
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+
+  let parameters = (
+    ins ArrayRefParameter<
+      "P4HIR::StructType::FieldInfo", "struct fields">:$elements
+  );
+
+  let extraClassDeclaration = [{
+    using FieldInfo = P4HIR::detail::FieldInfo;
+    mlir::Type getFieldType(mlir::StringRef fieldName);
+    void getInnerTypes(mlir::SmallVectorImpl<mlir::Type>&);
+    std::optional<unsigned> getFieldIndex(mlir::StringRef fieldName);
+    std::optional<unsigned> getFieldIndex(mlir::StringAttr fieldName);
   }];
 }
 
