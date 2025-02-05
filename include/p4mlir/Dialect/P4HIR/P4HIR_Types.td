@@ -223,7 +223,7 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 // StructType
 //===----------------------------------------------------------------------===//
 
-// A packed struct. Declares the p4hir::StructType in C++.
+// A packed struct. Declares the P4HIR::StructType in C++.
 def StructType : P4HIR_Type<"Struct", "struct", [
   DeclareTypeInterfaceMethods<DestructurableTypeInterface>,
   DeclareTypeInterfaceMethods<FieldIDTypeInterface>
@@ -231,14 +231,14 @@ def StructType : P4HIR_Type<"Struct", "struct", [
   let summary = "struct type";
   let description = [{
     Represents a structure of name, value pairs.
-    !p4hior.struct<fieldName1: Type1, fieldName2: Type2>
+    !p4hir.struct<"name", fieldName1: Type1, fieldName2: Type2>
   }];
 
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
 
   let parameters = (
-    ins ArrayRefParameter<
+    ins StringRefParameter<"struct name">:$name, ArrayRefParameter<
       "P4HIR::StructType::FieldInfo", "struct fields">:$elements
   );
 
