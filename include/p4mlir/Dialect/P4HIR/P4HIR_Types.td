@@ -255,10 +255,20 @@ def StructType : P4HIR_Type<"Struct", "struct", [
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
-def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
+def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType,
                            DontcareType, ErrorType, UnknownType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
-def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType]> {}
+def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType]> {}
 
+/// A ref type with the specified constraints on the nested type.
+class SpecificRefType<Type type> : ConfinedType<ReferenceType,
+  [SubstLeaves<"$_self", "mlir::cast<P4HIR::ReferenceType>($_self).getObjectType()",
+               type.predicate>],
+  "ref of " # type.summary, "P4HIR::ReferenceType"
+> {
+  Type objectType = type;
+}
+
+def StructRefType : SpecificRefType<StructType>;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
