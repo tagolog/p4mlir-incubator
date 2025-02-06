@@ -796,6 +796,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
             return AliasResult::OverridableAlias;
         }
 
+        if (auto structType = mlir::dyn_cast<P4HIR::StructType>(type)) {
+            os << structType.getName();
+            return AliasResult::OverridableAlias;
+        }
+
         return AliasResult::NoAlias;
     }
 
