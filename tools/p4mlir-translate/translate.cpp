@@ -89,7 +89,8 @@ class ConversionTracer {
  public:
     ConversionTracer(const char *Kind, const P4::IR::Node *node) {
         // TODO: Add TimeTrace here
-        LOG4(P4::IndentCtl::indent << Kind << dbp(node));
+        LOG4(P4::IndentCtl::indent << Kind << dbp(node) << (LOGGING(5) ? ":" : ""));
+        LOG5(node);
     }
     ~ConversionTracer() { LOG4_UNINDENT; }
 };
@@ -159,7 +160,6 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     llvm::DenseMap<P4Symbol, mlir::SymbolRefAttr> p4Symbols;
 
     mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
-    mlir::TypedAttr resolveConstantExpr(const P4::IR::Expression *expr);
     mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = true);
 
     mlir::Value getBoolConstant(mlir::Location loc, bool value) {
@@ -227,15 +227,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
     */
 
-    mlir::TypedAttr getOrCreateConstantExpr(const P4::IR::Expression *expr) {
-        auto cst = p4Constants.lookup(expr);
-        if (cst) return cst;
-
-        cst = resolveConstantExpr(expr);
-
-        BUG_CHECK(cst, "expected %1% to be converted as constant", expr);
-        return cst;
-    }
+    mlir::TypedAttr getOrCreateConstantExpr(const P4::IR::Expression *expr);
 
     mlir::Value getValue(const P4::IR::Node *node) {
         // If this is a PathExpression, resolve it
@@ -374,6 +366,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     bool preorder(const P4::IR::MethodCallExpression *mce) override;
+    bool preorder(const P4::IR::StructExpression *str) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
@@ -415,7 +408,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Unknown *type) {
 bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
     if ((this->type = converter.findType(name))) return false;
 
-    ConversionTracer trace("TypeConverting ", name);
+    ConversionTracer trace("Resolving type by name ", name);
     const auto *type = converter.resolveType(name);
     CHECK_NULL(type);
     mlir::Type mlirType = convert(type);
@@ -533,8 +526,17 @@ mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::CompileTimeValue *
     BUG("cannot resolve this constant yet %1%", ctv);
 }
 
-mlir::TypedAttr P4HIRConverter::resolveConstantExpr(const P4::IR::Expression *expr) {
-    LOG4("Resolving " << dbp(expr) << " as constant expression");
+mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression *expr) {
+    if (auto cst = p4Constants.lookup(expr)) return cst;
+
+    ConversionTracer trace("Resolving constant expression ", expr);
+
+    // If this is a PathExpression, resolve it to the actual constant
+    // declaration initializer, usualy this is a "leaf" case.
+    if (const auto *pe = expr->to<P4::IR::PathExpression>()) {
+        auto *cst = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration_Constant>();
+        return getOrCreateConstantExpr(cst->initializer);
+    }
 
     if (const auto *cst = expr->to<P4::IR::Constant>()) {
         auto type = getOrCreateType(cst->type);
@@ -578,8 +580,27 @@ mlir::TypedAttr P4HIRConverter::resolveConstantExpr(const P4::IR::Expression *ex
             fields.push_back(getOrCreateConstantExpr(field->expression));
         return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(fields)));
     }
+    if (const auto *m = expr->to<P4::IR::Member>()) {
+        auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(m->expr));
+        auto structType = mlir::cast<P4HIR::StructType>(base.getType());
 
-    BUG("cannot resolve this constant expression yet %1%", expr);
+        if (auto maybeIdx = structType.getFieldIndex(m->member.string_view())) {
+            auto field = base.getFields()[*maybeIdx];
+            auto fieldType = structType.getFieldType(m->member.string_view());
+
+            // TODO: We'd likely would want to convert this to some kind of interface,
+            if (mlir::isa<P4HIR::BoolType>(fieldType))
+                return setConstantExpr(expr, mlir::cast<P4HIR::BoolAttr>(field));
+
+            if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(fieldType))
+                return setConstantExpr(expr, mlir::cast<P4HIR::IntAttr>(field));
+
+            return setConstantExpr(expr, mlir::cast<P4HIR::AggAttr>(field));
+        } else
+            BUG("invalid member reference %1%", m);
+    }
+
+    BUG("cannot resolve this constant expression yet %1% (aka %2%)", expr, dbp(expr));
 }
 
 mlir::Value P4HIRConverter::materializeConstantExpr(const P4::IR::Expression *expr) {
@@ -1048,6 +1069,20 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
     } else {
         BUG("cannot convert this member reference %1% (aka %2%) yet", m, dbp(m));
     }
+}
+
+bool P4HIRConverter::preorder(const P4::IR::StructExpression *str) {
+    auto type = getOrCreateType(str->structType);
+    llvm::SmallVector<mlir::Value, 4> fields;
+
+    for (const auto *field : str->components) {
+        visit(field->expression);
+        fields.push_back(getValue(field->expression));
+    }
+
+    setValue(str, builder.create<P4HIR::StructOp>(getLoc(builder, str), type, fields).getResult());
+
+    return false;
 }
 
 }  // namespace
