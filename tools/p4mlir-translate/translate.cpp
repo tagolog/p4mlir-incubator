@@ -594,8 +594,8 @@ mlir::Value P4HIRConverter::emitBinOp(const P4::IR::Operation_Binary *binop,
 }
 
 mlir::Value P4HIRConverter::emitConcatOp(const P4::IR::Concat *concatop) {
-    return builder.create<P4HIR::ConcatOp>(getLoc(builder, concatop),
-                                           getValue(concatop->left), getValue(concatop->right));
+    return builder.create<P4HIR::ConcatOp>(getLoc(builder, concatop), getValue(concatop->left),
+                                           getValue(concatop->right));
 }
 
 mlir::Value P4HIRConverter::emitCmp(const P4::IR::Operation_Relation *relop,

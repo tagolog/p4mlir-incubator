@@ -298,20 +298,19 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
 
   let summary = "Concatenation of bit-strings and/or fixed-width signed integers";
   let description = [{
-    p4hir.concat performs concatenation of bit-strings and/or fixed-width signed integers.
+    `p4hir.concat` performs concatenation of bit-strings and/or fixed-width signed integers.
 
-    # TODO: improve description after the exact operation implementation
-
-    The two operands must be either bit<W> or int<W>, and they can be of different signedness and width.
+    The two operands must be either `p4hir.bit<N>` or `p4hir.int<N>`, and they can be of different signedness and width.
     The result has the same signedness as the left operand and the width equal to the sum of the two operands' width.
     In concatenation, the left operand is placed as the most significant bits.
 
     ```mlir
-    // bit<5> lhs = 3;
     %0 = p4hir.const #p4hir.int<3> : !p4hir.bit<5>
-    // bit<10> rlhs = 4;
-    %1 = p4hir.const #p4hir.int<4> : !p4hir.bit<10>
-    %2 = p4hir.concat(%0 : !p4hir.bit<5>, %1 : !p4hir.bit<10>) : !p4hir.bit<15>
+    %1 = p4hir.const #p4hir.int<4> : !p4hir.int<10>
+    %2 = p4hir.concat(%0 : !p4hir.bit<5>, %0 : !p4hir.bit<5>) : !p4hir.bit<10>
+    %3 = p4hir.concat(%1 : !p4hir.int<10>, %1 : !p4hir.int<10>) : !p4hir.int<20>
+    %4 = p4hir.concat(%0: !p4hir.bit<5>, %1 : !p4hir.int<10>) : !p4hir.bit<15>
+    %5 = p4hir.concat(%1 : !p4hir.int<5>, %0 : !p4hir.bit<10>) : !p4hir.int<15>
     ```
   }];
 
