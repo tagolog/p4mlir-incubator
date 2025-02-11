@@ -816,7 +816,9 @@ def CallOp : P4HIR_Op<"call",
   }];
 }
 
-def StructOp : P4HIR_Op<"struct", [Pure]> {
+def StructOp : P4HIR_Op<"struct",
+  [Pure,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Create a struct from constituent parts.";
   // FIXME: Better constraint type
   let arguments = (ins Variadic<AnyP4Type>:$input);
@@ -825,10 +827,9 @@ def StructOp : P4HIR_Op<"struct", [Pure]> {
   let hasVerifier = 1;
 }
 
-// Extract the value of a field of a structure.
 def StructExtractOp : P4HIR_Op<"struct_extract",
     [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]> {
   let summary = "Extract a named field from a struct.";
   let description = [{
@@ -868,12 +869,11 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   }];
 }
 
-// Extract the value of a field of a structure.
 def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
     [Pure,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]> {
-  let summary = "Create a reference to a struct field";
+  let summary = "Project from a struct reference to a reference to a named struct field";
   let description = [{
     ```
     %result = p4hir.struct_extract_ref %input["field"] : <!p4hir.struct<field: type>>
