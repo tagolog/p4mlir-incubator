@@ -281,17 +281,13 @@ def BinOp : P4HIR_Op<"binop", [Pure,
     ```
   }];
 
-  // TODO: get more accurate than AnyP4Type
-  let results = (outs AnyP4Type:$result);
+  let results = (outs BitsType:$result);
   let arguments = (ins Arg<BinOpKind, "binop kind">:$kind,
-                       AnyP4Type:$lhs, AnyP4Type:$rhs);
+                       BitsType:$lhs, BitsType:$rhs);
 
   let assemblyFormat = [{
     `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) attr-dict
   }];
-
-  // TODO: Implement verification
-  let hasVerifier = 0;
 }
 
 def ConcatOp : P4HIR_Op<"concat", [Pure]> {
