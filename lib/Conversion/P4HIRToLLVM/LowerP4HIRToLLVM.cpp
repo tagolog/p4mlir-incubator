@@ -307,6 +307,41 @@ struct SliceOpConversion : public ConvertOpToLLVMPattern<P4HIR::SliceOp> {
     }
 };
 
+struct CastOpConversion : public ConvertOpToLLVMPattern<P4HIR::CastOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CastOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto src = adaptor.getSrc();
+        auto srcType = dyn_cast<IntegerType>(src.getType());
+        auto resultType =
+            dyn_cast_if_present<IntegerType>(getTypeConverter()->convertType(op.getType()));
+        if (!srcType || !resultType)
+            return rewriter.notifyMatchFailure(op, "unsupported cast type");
+
+        if (srcType == resultType) {
+            rewriter.replaceOp(op, src);
+            return success();
+        }
+
+        if (resultType.getWidth() < srcType.getWidth()) {
+            rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, src);
+            return success();
+        }
+
+        auto p4SrcType = op.getSrcType();
+        if (auto aliasType = dyn_cast<P4HIR::AliasType>(p4SrcType))
+            p4SrcType = aliasType.getCanonicalType();
+
+        auto bitsType = dyn_cast<P4HIR::BitsType>(p4SrcType);
+        if (bitsType && bitsType.isSigned())
+            rewriter.replaceOpWithNewOp<LLVM::SExtOp>(op, resultType, src);
+        else
+            rewriter.replaceOpWithNewOp<LLVM::ZExtOp>(op, resultType, src);
+        return success();
+    }
+};
+
 struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<LowerP4HIRToLLVMPass> {
     void runOnOperation() override {
         auto &context = getContext();
@@ -345,6 +380,10 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
     converter.addConversion(
         [](P4HIR::BoolType boolType) { return IntegerType::get(boolType.getContext(), 1); });
 
+    converter.addConversion([&converter](P4HIR::AliasType aliasType) {
+        return converter.convertType(aliasType.getCanonicalType());
+    });
+
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BitsType bitsType,
                      P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
@@ -363,7 +402,8 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
 
 void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                                        RewritePatternSet &patterns) {
-    patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion,
-                 BrOpConversion, CondBrOpConversion, ConcatOpConversion, SliceOpConversion>(
-        converter);
+    patterns
+        .add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion, BrOpConversion,
+             CondBrOpConversion, ConcatOpConversion, SliceOpConversion, CastOpConversion>(
+            converter);
 }
