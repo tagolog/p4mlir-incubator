@@ -25,6 +25,8 @@ module {
   %shl = p4hir.shl(%lhs, %rhs : !infint) : !infint
   // CHECK: p4hir.shr
   %shr = p4hir.shr(%lhs, %rhs : !infint) : !infint
+  // CHECK: p4hir.slice
+  %slice = p4hir.slice %lhs[3 : 0] : !infint -> !p4hir.bit<4>
 }
 
 // -----
@@ -49,6 +51,8 @@ module {
   %shl = p4hir.shl(%lhs, %rhs : !u0i) : !u0i
   // CHECK: p4hir.shr
   %shr = p4hir.shr(%lhs, %rhs : !u0i) : !u0i
+  // CHECK: p4hir.concat
+  %concat = p4hir.concat(%lhs : !u0i, %rhs : !u0i) : !u0i
 }
 
 // -----
@@ -68,4 +72,22 @@ module {
   %shl = p4hir.shl(%val, %shift : !infint) : !u32i
   // CHECK: p4hir.shr
   %shr = p4hir.shr(%val, %shift : !infint) : !u32i
+}
+
+// -----
+
+// A `bit<0>` operand leaves the concatenation unconverted even though the
+// result itself has an LLVM counterpart.
+
+!u0i = !p4hir.bit<0>
+!u8i = !p4hir.bit<8>
+
+// CHECK-LABEL: module
+module {
+  // CHECK: p4hir.const
+  %empty = p4hir.const #p4hir.int<0> : !u0i
+  // CHECK: llvm.mlir.constant(5 : i8)
+  %val = p4hir.const #p4hir.int<5> : !u8i
+  // CHECK: p4hir.concat
+  %concat = p4hir.concat(%empty : !u0i, %val : !u8i) : !u8i
 }
