@@ -45,6 +45,10 @@ module {
   %cmpl = p4hir.unary(cmpl, %lhs) : !u0i
   // CHECK: p4hir.cmp(eq
   %eq = p4hir.cmp(eq, %lhs : !u0i, %rhs : !u0i)
+  // CHECK: p4hir.shl
+  %shl = p4hir.shl(%lhs, %rhs : !u0i) : !u0i
+  // CHECK: p4hir.shr
+  %shr = p4hir.shr(%lhs, %rhs : !u0i) : !u0i
 }
 
 // -----
