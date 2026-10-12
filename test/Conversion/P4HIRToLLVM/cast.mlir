@@ -13,9 +13,7 @@
 module {
   // CHECK-NEXT: llvm.mlir.constant(42 : i8) : i8
   %c = p4hir.const #p4hir.int<42> : !b8i
-  // CHECK-NOT: llvm.zext
-  // CHECK-NOT: llvm.sext
-  // CHECK-NOT: llvm.trunc
+  // CHECK-NEXT: }
   %s = p4hir.cast(%c : !b8i) : !i8i
 }
 
@@ -66,21 +64,29 @@ module {
 
 // -----
 
-// cast - bool widened with zext
+// cast - widening that also changes the signedness extends by the source sign;
+// such casts are produced by the canonicalizer composing cast chains.
 
+!i8i = !p4hir.int<8>
 !b8i = !p4hir.bit<8>
+!i16i = !p4hir.int<16>
+!b16i = !p4hir.bit<16>
 
 // CHECK-LABEL: module
 module {
-  // CHECK-NEXT: %[[B:.*]] = llvm.mlir.constant(true) : i1
-  %b = p4hir.const #p4hir.bool<true> : !p4hir.bool
-  // CHECK-NEXT: llvm.zext %[[B]] : i1 to i8
-  %wide = p4hir.cast(%b : !p4hir.bool) : !b8i
+  // CHECK-NEXT: %[[S:.*]] = llvm.mlir.constant(-1 : i8) : i8
+  %s = p4hir.const #p4hir.int<-1> : !i8i
+  // CHECK-NEXT: llvm.sext %[[S]] : i8 to i16
+  %su = p4hir.cast(%s : !i8i) : !b16i
+  // CHECK-NEXT: %[[U:.*]] = llvm.mlir.constant(-1 : i8) : i8
+  %u = p4hir.const #p4hir.int<255> : !b8i
+  // CHECK-NEXT: llvm.zext %[[U]] : i8 to i16
+  %us = p4hir.cast(%u : !b8i) : !i16i
 }
 
 // -----
 
-// cast - bit<1> to bool is a no-op
+// cast - bit<1> to bool and bool to bit<1> is a no-op
 
 !b1i = !p4hir.bit<1>
 
@@ -88,23 +94,9 @@ module {
 module {
   // CHECK-NEXT: llvm.mlir.constant(true) : i1
   %one = p4hir.const #p4hir.int<1> : !b1i
-  // CHECK-NOT: llvm.trunc
   %flag = p4hir.cast(%one : !b1i) : !p4hir.bool
-}
-
-// -----
-
-// cast - alias lowered as the type it wraps
-
-!b9i = !p4hir.bit<9>
-!b32i = !p4hir.bit<32>
-!Narrow = !p4hir.alias<"Narrow", !b9i>
-
-// CHECK-LABEL: module
-module {
-  // CHECK-NEXT: %[[C:.*]] = llvm.mlir.constant(10 : i9) : i9
-  %c = p4hir.const #p4hir.int<10> : !b9i
-  %alias = p4hir.cast(%c : !b9i) : !Narrow
-  // CHECK-NEXT: llvm.zext %[[C]] : i9 to i32
-  %wide = p4hir.cast(%alias : !Narrow) : !b32i
+  // CHECK-NEXT: llvm.mlir.constant(false) : i1
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  // CHECK-NEXT: }
+  %bit = p4hir.cast(%false : !p4hir.bool) : !b1i
 }

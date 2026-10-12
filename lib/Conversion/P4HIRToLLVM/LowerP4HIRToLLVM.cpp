@@ -314,8 +314,7 @@ struct CastOpConversion : public ConvertOpToLLVMPattern<P4HIR::CastOp> {
                                   ConversionPatternRewriter &rewriter) const override {
         auto src = adaptor.getSrc();
         auto srcType = dyn_cast<IntegerType>(src.getType());
-        auto resultType =
-            dyn_cast_if_present<IntegerType>(getTypeConverter()->convertType(op.getType()));
+        auto resultType = getTypeConverter()->convertType<IntegerType>(op.getType());
         if (!srcType || !resultType)
             return rewriter.notifyMatchFailure(op, "unsupported cast type");
 
@@ -324,20 +323,14 @@ struct CastOpConversion : public ConvertOpToLLVMPattern<P4HIR::CastOp> {
             return success();
         }
 
-        if (resultType.getWidth() < srcType.getWidth()) {
+        if (op.isTruncationCast())
             rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, src);
-            return success();
-        }
-
-        auto p4SrcType = op.getSrcType();
-        if (auto aliasType = dyn_cast<P4HIR::AliasType>(p4SrcType))
-            p4SrcType = aliasType.getCanonicalType();
-
-        auto bitsType = dyn_cast<P4HIR::BitsType>(p4SrcType);
-        if (bitsType && bitsType.isSigned())
+        else if (op.isSignExtensionCast())
             rewriter.replaceOpWithNewOp<LLVM::SExtOp>(op, resultType, src);
-        else
+        else if (op.isZeroExtensionCast())
             rewriter.replaceOpWithNewOp<LLVM::ZExtOp>(op, resultType, src);
+        else
+            return rewriter.notifyMatchFailure(op, "unsupported cast");
         return success();
     }
 };
@@ -379,10 +372,6 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
 
     converter.addConversion(
         [](P4HIR::BoolType boolType) { return IntegerType::get(boolType.getContext(), 1); });
-
-    converter.addConversion([&converter](P4HIR::AliasType aliasType) {
-        return converter.convertType(aliasType.getCanonicalType());
-    });
 
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BitsType bitsType,
